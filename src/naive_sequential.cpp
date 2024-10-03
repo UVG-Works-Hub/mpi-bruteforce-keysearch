@@ -15,6 +15,7 @@
 #include <fstream>
 #include <cstring>
 #include <openssl/des.h>
+#include <chrono>
 
 /**
  * @brief Encrypts the plaintext using DES with the specified key.
@@ -148,6 +149,9 @@ int main(int argc, char* argv[]) {
     unsigned char ciphertext[paddedLength];
     encrypt(keyArray, plaintextBuffer, ciphertext, paddedLength);
 
+    // Start timing
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Brute-force decryption
     long upperBound = (1L << 56);  // Upper bound for DES keys (2^56)
     for (long key = 0; key < upperBound; ++key) {
@@ -160,6 +164,12 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
+
+    // End timing
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
+
 
     return 0;
 }

@@ -16,6 +16,7 @@
 #include <cstring>
 #include <openssl/des.h>
 #include <mpi.h>
+#include <chrono>
 
 /**
  * @brief Encrypts the plaintext using DES with the specified key.
@@ -167,6 +168,9 @@ int main(int argc, char* argv[]) {
     MPI_Request request;
     MPI_Irecv(&foundKey, 1, MPI_LONG, MPI_ANY_SOURCE, MPI_ANY_TAG, comm, &request);
 
+    // Start timing
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Brute-force key search
     for (long key = lowerBound; key < upperBoundLocal && foundKey == 0; ++key) {
         if (tryKey(key, ciphertext, paddedLength, searchPhrase)) {
@@ -178,6 +182,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // End timing
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+
     if (processId == 0) {
         MPI_Wait(&request, MPI_STATUS_IGNORE);
         unsigned char decryptedText[paddedLength + 1];
@@ -185,6 +193,7 @@ int main(int argc, char* argv[]) {
         decrypt(keyArray, ciphertext, decryptedText, paddedLength);
         decryptedText[paddedLength] = '\0';
         std::cout << "Key found: " << foundKey << " Decrypted text: " << decryptedText << std::endl;
+        std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
     }
 
     MPI_Finalize();
