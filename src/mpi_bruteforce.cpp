@@ -284,7 +284,7 @@ int main(int argc, char* argv[]) {
     encrypt(keyArray, plaintextBuffer, ciphertext, paddedLength);
 
     // Define key space and range for each process
-    long upperBound = (1L << 16);  // Adjusted for testing purposes (e.g., 2^16)
+    long upperBound = (1L << 56);  // Adjusted for testing purposes (e.g., 2^16)
     long keysPerProcess = upperBound / numProcesses;
     long lowerBound = keysPerProcess * processId;
     long upperBoundLocal = (processId == numProcesses - 1) ? upperBound : keysPerProcess * (processId + 1);
