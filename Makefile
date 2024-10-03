@@ -7,7 +7,6 @@ LDFLAGS = -lssl -lcrypto
 # Directories
 BIN_DIR = bin
 SRC_DIR = src
-OBJ_DIR = obj
 
 # Source files
 MPI_SRC = $(SRC_DIR)/mpi_bruteforce.cpp
