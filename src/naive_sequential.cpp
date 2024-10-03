@@ -16,6 +16,52 @@
 #include <cstring>
 #include <openssl/des.h>
 #include <chrono>
+#include <algorithm>
+#include <cctype>
+#include <locale>
+
+#define DEBUG 0  // Set to 1 to enable debug messages
+
+/**
+ * @brief Trims leading whitespace from the start of a string (in place).
+ *
+ * This function removes all leading whitespace characters from the input string `s`,
+ * modifying the string in place.
+ *
+ * @param s The string to be trimmed.
+ */
+static inline void ltrim(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+}
+
+/**
+ * @brief Trims trailing whitespace from the end of a string (in place).
+ *
+ * This function removes all trailing whitespace characters from the input string `s`,
+ * modifying the string in place.
+ *
+ * @param s The string to be trimmed.
+ */
+static inline void rtrim(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
+}
+
+/**
+ * @brief Trims leading and trailing whitespace from both ends of a string (in place).
+ *
+ * This function removes all leading and trailing whitespace characters from the input string `s`,
+ * modifying the string in place. It combines the functionality of `ltrim` and `rtrim`.
+ *
+ * @param s The string to be trimmed.
+ */
+static inline void trim(std::string &s) {
+    ltrim(s);
+    rtrim(s);
+}
 
 /**
  * @brief Encrypts the plaintext using DES with the specified key.
@@ -35,7 +81,14 @@ void encrypt(const unsigned char* key, const unsigned char* plaintext, unsigned 
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-    DES_set_key_checked(&keyBlock, &keySchedule);
+    // Set the key parity bits
+    DES_set_odd_parity(&keyBlock);
+
+    // Check if the key is weak or has incorrect parity
+    if (DES_set_key_checked(&keyBlock, &keySchedule) != 0) {
+        std::cerr << "Encryption key error in DES_set_key_checked" << std::endl;
+        exit(1);
+    }
 
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((const_DES_cblock*)(plaintext + i), (DES_cblock*)(ciphertext + i), &keySchedule, DES_ENCRYPT);
@@ -62,7 +115,16 @@ void decrypt(const unsigned char* key, const unsigned char* ciphertext, unsigned
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-    DES_set_key_checked(&keyBlock, &keySchedule);
+    // Set the key parity bits
+    DES_set_odd_parity(&keyBlock);
+
+    // Check if the key is weak or has incorrect parity
+    if (DES_set_key_checked(&keyBlock, &keySchedule) != 0) {
+        #if DEBUG
+        std::cerr << "Decryption key error in DES_set_key_checked" << std::endl;
+        #endif
+        return;  // Skip decryption with this key
+    }
 
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((const_DES_cblock*)(ciphertext + i), (DES_cblock*)(plaintext + i), &keySchedule, DES_DECRYPT);
@@ -101,6 +163,11 @@ bool tryKey(long key, const unsigned char* ciphertext, int len, const std::strin
     decrypt(keyArray, ciphertext, temp, len);
     temp[len] = '\0';  // Null-terminate the decrypted text
 
+    // Check if decryption was successful before searching
+    if (strlen(reinterpret_cast<char*>(temp)) == 0) {
+        return false;
+    }
+
     return strstr(reinterpret_cast<char*>(temp), searchPhrase.c_str()) != nullptr;
 }
 
@@ -110,29 +177,53 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Load plaintext from the file
+    // Load plaintext from the file, skipping empty lines
     std::ifstream inputFile(argv[1]);
     if (!inputFile) {
         std::cerr << "Failed to open input file." << std::endl;
         return 1;
     }
 
-    std::string plaintext((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
+    std::string line;
+    std::string plaintext;
+    bool firstLine = true; // Flag to handle spacing correctly
+    while (std::getline(inputFile, line)) {
+        trim(line);
+        if (!line.empty()) {
+            if (!firstLine) {
+                plaintext += ' ';  // Add a space between lines
+            }
+            plaintext += line;
+            firstLine = false;
+        }
+    }
     inputFile.close();
 
-    // Load the search phrase from the file
+    std::cout << "Plaintext: -" << plaintext << "-" << std::endl;
+
+    // Load the search phrase from the file, skipping empty lines
     std::ifstream searchPhraseFile(argv[3]);
     if (!searchPhraseFile) {
         std::cerr << "Failed to open search phrase file." << std::endl;
         return 1;
     }
-    std::string searchPhrase((std::istreambuf_iterator<char>(searchPhraseFile)), std::istreambuf_iterator<char>());
+
+    std::string searchLine;
+    std::string searchPhrase;
+    firstLine = true; // Flag to handle spacing correctly
+    while (std::getline(searchPhraseFile, searchLine)) {
+        trim(searchLine);
+        if (!searchLine.empty()) {
+            if (!firstLine) {
+                searchPhrase += ' ';  // Add a space between lines
+            }
+            searchPhrase += searchLine;
+            firstLine = false;
+        }
+    }
     searchPhraseFile.close();
 
-    // Remove any trailing newline characters from the search phrase
-    if (!searchPhrase.empty() && searchPhrase[searchPhrase.length() - 1] == '\n') {
-        searchPhrase.erase(searchPhrase.length() - 1);
-    }
+    std::cout << "Search phrase: -" << searchPhrase << "-" << std::endl;
 
     // Make sure the plaintext length is a multiple of 8
     int paddedLength = ((plaintext.size() + 7) / 8) * 8;
@@ -147,13 +238,14 @@ int main(int argc, char* argv[]) {
 
     // Encrypt the plaintext
     unsigned char ciphertext[paddedLength];
+
     encrypt(keyArray, plaintextBuffer, ciphertext, paddedLength);
 
     // Start timing
     auto start = std::chrono::high_resolution_clock::now();
 
     // Brute-force decryption
-    long upperBound = (1L << 56);  // Upper bound for DES keys (2^56)
+    long upperBound = (1L << 56);  // Adjusted for testing purposes (2^16)
     for (long key = 0; key < upperBound; ++key) {
         if (tryKey(key, ciphertext, paddedLength, searchPhrase)) {
             unsigned char decryptedText[paddedLength + 1];
@@ -169,7 +261,6 @@ int main(int argc, char* argv[]) {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
     std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
-
 
     return 0;
 }
