@@ -6,7 +6,7 @@
  * mpic++ -o mpi_bruteforce mpi_bruteforce.cpp -lssl -lcrypto
  *
  * Example usage:
- * mpirun -np 4 ./mpi_bruteforce plaintext.txt 123456
+ * mpirun -np 4 ./mpi_bruteforce plaintext.txt 123456 search_phrase.txt
  *
  * @date October 2024
  */
@@ -16,9 +16,6 @@
 #include <cstring>
 #include <openssl/des.h>
 #include <mpi.h>
-
-// Search phrase to verify successful decryption
-const char SEARCH_PHRASE[] = "es una prueba de";
 
 /**
  * @brief Encrypts the plaintext using DES with the specified key.
@@ -92,10 +89,11 @@ void longToKey(long key, unsigned char* keyArray) {
  * @param key The long key to test.
  * @param ciphertext The encrypted data.
  * @param len Length of the ciphertext.
+ * @param searchPhrase The phrase to search for in the decrypted text.
  * @return true If the decrypted text contains the search phrase.
  * @return false Otherwise.
  */
-bool tryKey(long key, const unsigned char* ciphertext, int len) {
+bool tryKey(long key, const unsigned char* ciphertext, int len, const std::string& searchPhrase) {
     unsigned char temp[len + 1];
     unsigned char keyArray[8];
 
@@ -103,12 +101,12 @@ bool tryKey(long key, const unsigned char* ciphertext, int len) {
     decrypt(keyArray, ciphertext, temp, len);
     temp[len] = '\0';  // Null-terminate the decrypted text
 
-    return strstr(reinterpret_cast<char*>(temp), SEARCH_PHRASE) != nullptr;
+    return strstr(reinterpret_cast<char*>(temp), searchPhrase.c_str()) != nullptr;
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <encryption_key>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <input_file> <encryption_key> <search_phrase_file>" << std::endl;
         return 1;
     }
 
@@ -121,6 +119,20 @@ int main(int argc, char* argv[]) {
 
     std::string plaintext((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
     inputFile.close();
+
+    // Load the search phrase from the file
+    std::ifstream searchPhraseFile(argv[3]);
+    if (!searchPhraseFile) {
+        std::cerr << "Failed to open search phrase file." << std::endl;
+        return 1;
+    }
+    std::string searchPhrase((std::istreambuf_iterator<char>(searchPhraseFile)), std::istreambuf_iterator<char>());
+    searchPhraseFile.close();
+
+    // Remove any trailing newline characters from the search phrase
+    if (!searchPhrase.empty() && searchPhrase[searchPhrase.length() - 1] == '\n') {
+        searchPhrase.erase(searchPhrase.length() - 1);
+    }
 
     // Make sure the plaintext length is a multiple of 8
     int paddedLength = ((plaintext.size() + 7) / 8) * 8;
@@ -157,7 +169,7 @@ int main(int argc, char* argv[]) {
 
     // Brute-force key search
     for (long key = lowerBound; key < upperBoundLocal && foundKey == 0; ++key) {
-        if (tryKey(key, ciphertext, paddedLength)) {
+        if (tryKey(key, ciphertext, paddedLength, searchPhrase)) {
             foundKey = key;
             for (int i = 0; i < numProcesses; ++i) {
                 MPI_Send(&foundKey, 1, MPI_LONG, i, 0, comm);
