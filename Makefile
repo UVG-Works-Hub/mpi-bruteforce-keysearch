@@ -1,7 +1,11 @@
+# =====================================================================
+# Makefile for Compiling MPI and Sequential Brute-Force Programs
+# =====================================================================
+
 # Compiler settings
 CXX = g++
 MPICXX = mpic++
-CXXFLAGS = -Wall -O2
+CXXFLAGS = -Wall -O2 -std=c++11
 LDFLAGS = -lssl -lcrypto
 
 # Directories
@@ -10,33 +14,45 @@ SRC_DIR = src
 
 # Source files
 MPI_SRC = $(SRC_DIR)/mpi_bruteforce.cpp
+MPI_OPT_SRC = $(SRC_DIR)/mpi_bruteforce_optimized.cpp
 SEQ_SRC = $(SRC_DIR)/naive_sequential.cpp
 
 # Output binaries
 MPI_BIN = $(BIN_DIR)/mpi_bruteforce
+MPI_OPT_BIN = $(BIN_DIR)/mpi_bruteforce_optimized
 SEQ_BIN = $(BIN_DIR)/naive_sequential
 
 # Default target
-all: directories $(MPI_BIN) $(SEQ_BIN)
+all: directories $(MPI_BIN) $(MPI_OPT_BIN) $(SEQ_BIN)
 
 # Create necessary directories
 directories:
-	mkdir -p $(BIN_DIR)
+	@mkdir -p $(BIN_DIR)
 
-# Compile MPI-based brute-force program
+# Compile original MPI-based brute-force program
 $(MPI_BIN): $(MPI_SRC)
+	@echo "Compiling original MPI brute-force program..."
+	$(MPICXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
+
+# Compile optimized MPI-based brute-force program
+$(MPI_OPT_BIN): $(MPI_OPT_SRC)
+	@echo "Compiling optimized MPI brute-force program..."
 	$(MPICXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Compile sequential brute-force program
 $(SEQ_BIN): $(SEQ_SRC)
+	@echo "Compiling sequential brute-force program..."
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Clean up binaries
 clean:
-	rm -rf $(BIN_DIR)/*
+	@echo "Cleaning up binaries..."
+	@rm -f $(BIN_DIR)/*
 
 # Clean all generated files including directories
 distclean: clean
-	rm -rf $(BIN_DIR)
+	@echo "Removing bin directory..."
+	@rm -rf $(BIN_DIR)
 
+# Phony targets
 .PHONY: all directories clean distclean
