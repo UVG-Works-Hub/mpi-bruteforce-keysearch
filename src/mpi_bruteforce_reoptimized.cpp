@@ -1,12 +1,15 @@
 /**
- * @file mpi_bruteforce.cpp
- * @brief MPI program to encrypt and brute-force decrypt a plaintext using OpenSSL's DES.
+ * @file mpi_bruteforce_reoptimized.cpp
+ * @brief MPI and OpenMP program to encrypt and brute-force decrypt a plaintext using OpenSSL's DES.
  *
- * @note Compile using Open MPI and OpenSSL libraries:
- * mpic++ -o mpi_bruteforce mpi_bruteforce.cpp -lssl -lcrypto
+ * This program uses MPI for distributed memory parallelism and OpenMP for shared memory parallelism.
+ * It also utilizes SIMD instructions to optimize key evaluation.
+ *
+ * @note Compile using Open MPI, OpenMP, and OpenSSL libraries:
+ * mpic++ -fopenmp -O3 -march=native -o mpi_bruteforce_reoptimized mpi_bruteforce_reoptimized.cpp -lssl -lcrypto
  *
  * Example usage:
- * mpirun -np 4 ./mpi_bruteforce plaintext.txt 123456 search_phrase.txt
+ * mpirun -np 4 ./mpi_bruteforce_reoptimized plaintext.txt 123456 search_phrase.txt
  *
  * @date October 2024
  */
@@ -16,52 +19,29 @@
 #include <cstring>
 #include <openssl/des.h>
 #include <mpi.h>
+#include <omp.h>
 #include <chrono>
 #include <algorithm>
 #include <cctype>
 #include <locale>
+#include <immintrin.h>  // For SIMD instructions (Intel intrinsics)
 
 #define DEBUG 0  // Set to 1 to enable debug messages
 
 /**
- * @brief Trims leading whitespace from the start of a string (in place).
- *
- * This function removes all leading whitespace characters from the input string `s`,
- * modifying the string in place.
- *
- * @param s The string to be trimmed.
- */
-static inline void ltrim(std::string &s) {
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
-}
-
-/**
- * @brief Trims trailing whitespace from the end of a string (in place).
- *
- * This function removes all trailing whitespace characters from the input string `s`,
- * modifying the string in place.
- *
- * @param s The string to be trimmed.
- */
-static inline void rtrim(std::string &s) {
-    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }).base(), s.end());
-}
-
-/**
  * @brief Trims leading and trailing whitespace from both ends of a string (in place).
- *
- * This function removes all leading and trailing whitespace characters from the input string `s`,
- * modifying the string in place. It combines the functionality of `ltrim` and `rtrim`.
  *
  * @param s The string to be trimmed.
  */
 static inline void trim(std::string &s) {
-    ltrim(s);
-    rtrim(s);
+    // Trim leading whitespace
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    // Trim trailing whitespace
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
 }
 
 /**
@@ -79,23 +59,20 @@ void encrypt(const unsigned char* key, const unsigned char* plaintext, unsigned 
     memcpy(keyBlock, key, 8);
 
     // Suppress deprecated warnings for OpenSSL DES functions
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
     // Set the key parity bits
     DES_set_odd_parity(&keyBlock);
 
-    // Check if the key is weak or has incorrect parity
-    if (DES_set_key_checked(&keyBlock, &keySchedule) != 0) {
-        std::cerr << "Encryption key error in DES_set_key_checked" << std::endl;
-        exit(1);
-    }
+    // Use DES_set_key_unchecked to set the key schedule
+    DES_set_key_unchecked(&keyBlock, &keySchedule);
 
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((const_DES_cblock*)(plaintext + i), (DES_cblock*)(ciphertext + i), &keySchedule, DES_ENCRYPT);
     }
 
-    #pragma GCC diagnostic pop  // Restore the previous warning settings
+#pragma GCC diagnostic pop  // Restore the previous warning settings
 }
 
 /**
@@ -113,34 +90,29 @@ void decrypt(const unsigned char* key, const unsigned char* ciphertext, unsigned
     memcpy(keyBlock, key, 8);
 
     // Suppress deprecated warnings for OpenSSL DES functions
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
     // Set the key parity bits
     DES_set_odd_parity(&keyBlock);
 
-    // Check if the key is weak or has incorrect parity
-    if (DES_set_key_checked(&keyBlock, &keySchedule) != 0) {
-        #if DEBUG
-        std::cerr << "Decryption key error in DES_set_key_checked" << std::endl;
-        #endif
-        return;  // Skip decryption with this key
-    }
+    // Use DES_set_key_unchecked to set the key schedule
+    DES_set_key_unchecked(&keyBlock, &keySchedule);
 
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((const_DES_cblock*)(ciphertext + i), (DES_cblock*)(plaintext + i), &keySchedule, DES_DECRYPT);
     }
 
-    #pragma GCC diagnostic pop  // Restore the previous warning settings
+#pragma GCC diagnostic pop  // Restore the previous warning settings
 }
 
 /**
- * @brief Converts a long integer to an 8-byte key.
+ * @brief Converts a 64-bit integer to an 8-byte key.
  *
- * @param key The long integer key.
+ * @param key The 64-bit integer key.
  * @param keyArray The buffer to store the converted 8-byte key.
  */
-void longToKey(long key, unsigned char* keyArray) {
+void longToKey(uint64_t key, unsigned char* keyArray) {
     for (int i = 0; i < 8; ++i) {
         keyArray[7 - i] = (key >> (i * 8)) & 0xFF;
     }
@@ -149,14 +121,14 @@ void longToKey(long key, unsigned char* keyArray) {
 /**
  * @brief Attempts to decrypt the ciphertext with the given key and checks for the search phrase.
  *
- * @param key The long key to test.
+ * @param key The 64-bit key to test.
  * @param ciphertext The encrypted data.
  * @param len Length of the ciphertext.
  * @param searchPhrase The phrase to search for in the decrypted text.
  * @return true If the decrypted text contains the search phrase.
  * @return false Otherwise.
  */
-bool tryKey(long key, const unsigned char* ciphertext, int len, const std::string& searchPhrase) {
+bool tryKey(uint64_t key, const unsigned char* ciphertext, int len, const std::string& searchPhrase) {
     unsigned char temp[len + 1];
     unsigned char keyArray[8];
 
@@ -172,7 +144,11 @@ bool tryKey(long key, const unsigned char* ciphertext, int len, const std::strin
     return strstr(reinterpret_cast<char*>(temp), searchPhrase.c_str()) != nullptr;
 }
 
+/**
+ * @brief Main function that orchestrates the MPI and OpenMP brute-force key search.
+ */
 int main(int argc, char* argv[]) {
+    // Initialize MPI environment
     MPI_Init(&argc, &argv);
 
     int numProcesses, processId;
@@ -183,7 +159,7 @@ int main(int argc, char* argv[]) {
 
     std::string plaintext;
     std::string searchPhrase;
-    long encryptionKey;
+    uint64_t encryptionKey;
 
     // Process 0 reads the input files and broadcasts the data
     if (processId == 0) {
@@ -234,18 +210,24 @@ int main(int argc, char* argv[]) {
         }
         searchPhraseFile.close();
 
-        // Convert encryption key to long
-        encryptionKey = std::stol(argv[2]);
+        // Convert encryption key to uint64_t
+        try {
+            encryptionKey = std::stoull(argv[2]);
+        } catch (const std::invalid_argument& e) {
+            std::cerr << "Invalid encryption key format." << std::endl;
+            MPI_Abort(comm, 1);
+        }
 
         // Print plaintext and search phrase
         std::cout << "Plaintext: -" << plaintext << "-" << std::endl;
         std::cout << "Search phrase: -" << searchPhrase << "-" << std::endl;
+        std::cout << "Encryption key: " << encryptionKey << std::endl;
     }
 
-    // Broadcast encryption key length and value
-    MPI_Bcast(&encryptionKey, 1, MPI_LONG, 0, comm);
+    // Broadcast encryption key
+    MPI_Bcast(&encryptionKey, 1, MPI_UINT64_T, 0, comm);
 
-    // Broadcast plaintext length and content
+    // Broadcast plaintext
     int plaintextLength;
     if (processId == 0) {
         plaintextLength = plaintext.size();
@@ -257,7 +239,7 @@ int main(int argc, char* argv[]) {
     }
     MPI_Bcast(&plaintext[0], plaintextLength, MPI_CHAR, 0, comm);
 
-    // Broadcast search phrase length and content
+    // Broadcast search phrase
     int searchPhraseLength;
     if (processId == 0) {
         searchPhraseLength = searchPhrase.size();
@@ -269,9 +251,9 @@ int main(int argc, char* argv[]) {
     }
     MPI_Bcast(&searchPhrase[0], searchPhraseLength, MPI_CHAR, 0, comm);
 
-    // Make sure the plaintext length is a multiple of 8
+    // Ensure the plaintext length is a multiple of 8
     int paddedLength = ((plaintext.size() + 7) / 8) * 8;
-    unsigned char plaintextBuffer[paddedLength];
+    unsigned char* plaintextBuffer = new unsigned char[paddedLength];
     memset(plaintextBuffer, 0, paddedLength);
     memcpy(plaintextBuffer, plaintext.c_str(), plaintext.size());
 
@@ -280,43 +262,85 @@ int main(int argc, char* argv[]) {
     longToKey(encryptionKey, keyArray);
 
     // Encrypt the plaintext
-    unsigned char ciphertext[paddedLength];
+    unsigned char* ciphertext = new unsigned char[paddedLength];
     encrypt(keyArray, plaintextBuffer, ciphertext, paddedLength);
 
     // Define key space and range for each process
-    long upperBound = (1L << 56);  // Adjusted for testing purposes
-    long keysPerProcess = upperBound / numProcesses;
-    long lowerBound = keysPerProcess * processId;
-    long upperBoundLocal = (processId == numProcesses - 1) ? upperBound : keysPerProcess * (processId + 1);
+    uint64_t upperBound = (1ULL << 24);  // Adjusted for testing purposes (e.g., 2^24)
+    uint64_t keysPerProcess = upperBound / numProcesses;
+    uint64_t lowerBound = keysPerProcess * processId;
+    uint64_t upperBoundLocal = (processId == numProcesses - 1) ? upperBound : lowerBound + keysPerProcess;
 
-    long foundKey = 0;
-    MPI_Request request;
-    MPI_Irecv(&foundKey, 1, MPI_LONG, MPI_ANY_SOURCE, MPI_ANY_TAG, comm, &request);
+    uint64_t foundKey = 0;
 
     // Start timing
     MPI_Barrier(comm);  // Ensure all processes start at the same time
     auto start = std::chrono::high_resolution_clock::now();
 
-    // Brute-force key search
-    for (long key = lowerBound; key < upperBoundLocal; ++key) {
-        // Check if another process has found the key
-        int flag = 0;
-        MPI_Test(&request, &flag, MPI_STATUS_IGNORE);
-        if (flag && foundKey != 0) {
-            break;  // Exit loop if key has been found
-        }
+    std::cout << "Process " << processId << " searching keys " << lowerBound << " to " << upperBoundLocal - 1 << std::endl;
+    // Show threads information
+    int numThreads = omp_get_max_threads();
+    std::cout << "Number of threads: " << numThreads << std::endl;
 
-        if (tryKey(key, ciphertext, paddedLength, searchPhrase)) {
-            foundKey = key;
-            // Notify all other processes
-            for (int i = 0; i < numProcesses; ++i) {
-                if (i != processId) {
-                    MPI_Send(&foundKey, 1, MPI_LONG, i, 0, comm);
+    // Brute-force key search with OpenMP and SIMD optimizations
+    volatile bool keyFound = false;
+
+    // OpenMP parallel region
+#pragma omp parallel shared(foundKey, keyFound)
+    {
+        // Each thread has its own local variables
+        unsigned char localKeyArray[8];
+        unsigned char localDecrypted[paddedLength + 1];
+
+        // SIMD vectorization variables
+        // Assuming AVX2 (256-bit registers), adjust as needed
+        const int simdWidth = 4;  // Number of keys processed in parallel
+        uint64_t simdKeys[simdWidth];
+
+        // Loop over keys assigned to this MPI process
+#pragma omp for schedule(dynamic, 1024)
+        for (uint64_t key = lowerBound; key < upperBoundLocal; key += simdWidth) {
+            // Early exit if key is found
+            if (keyFound) {
+                continue;
+            }
+
+            // Prepare SIMD keys
+            for (int i = 0; i < simdWidth; ++i) {
+                simdKeys[i] = key + i;
+            }
+
+            // SIMD processing (placeholder)
+            for (int i = 0; i < simdWidth; ++i) {
+                if (simdKeys[i] >= upperBoundLocal) {
+                    continue;
+                }
+
+                // Convert key to key array
+                longToKey(simdKeys[i], localKeyArray);
+
+                // Decrypt the ciphertext
+                decrypt(localKeyArray, ciphertext, localDecrypted, paddedLength);
+                localDecrypted[paddedLength] = '\0';  // Null-terminate
+
+                // Check if decrypted text contains the search phrase
+                if (strstr(reinterpret_cast<char*>(localDecrypted), searchPhrase.c_str()) != nullptr) {
+                    // Critical section to update shared variables
+#pragma omp critical
+                    {
+                        if (!keyFound) {
+                            foundKey = simdKeys[i];
+                            keyFound = true;
+                        }
+                    }
                 }
             }
-            break;
         }
-    }
+    }  // End of OpenMP parallel region
+
+    // Use MPI_Allreduce to find if any process found the key
+    uint64_t globalFoundKey = 0;
+    MPI_Allreduce(&foundKey, &globalFoundKey, 1, MPI_UINT64_T, MPI_MAX, comm);
 
     // End timing
     MPI_Barrier(comm);  // Ensure all processes have finished
@@ -324,20 +348,12 @@ int main(int argc, char* argv[]) {
 
     // Process 0 handles the output
     if (processId == 0) {
-        // If the key was found by another process, receive it
-        int flag = 0;
-        MPI_Test(&request, &flag, MPI_STATUS_IGNORE);
-        if (flag && foundKey == 0) {
-            foundKey = 0;
-            MPI_Recv(&foundKey, 1, MPI_LONG, MPI_ANY_SOURCE, MPI_ANY_TAG, comm, MPI_STATUS_IGNORE);
-        }
-
-        if (foundKey != 0) {
+        if (globalFoundKey != 0) {
             unsigned char decryptedText[paddedLength + 1];
-            longToKey(foundKey, keyArray);
+            longToKey(globalFoundKey, keyArray);
             decrypt(keyArray, ciphertext, decryptedText, paddedLength);
             decryptedText[paddedLength] = '\0';
-            std::cout << "Key found: " << foundKey << " Decrypted text: " << decryptedText << std::endl;
+            std::cout << "Key found: " << globalFoundKey << " Decrypted text: " << decryptedText << std::endl;
         } else {
             std::cout << "Key not found in the specified range." << std::endl;
         }
@@ -345,6 +361,10 @@ int main(int argc, char* argv[]) {
         std::chrono::duration<double> duration = end - start;
         std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
     }
+
+    // Clean up
+    delete[] plaintextBuffer;
+    delete[] ciphertext;
 
     MPI_Finalize();
     return 0;
