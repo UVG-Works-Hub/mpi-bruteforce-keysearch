@@ -3,7 +3,7 @@
  * @brief MPI and OpenMP program to encrypt and brute-force decrypt a plaintext using OpenSSL's DES.
  *
  * This program uses MPI for distributed memory parallelism and OpenMP for shared memory parallelism.
- * It also utilizes SIMD instructions to optimize key evaluation.
+ * It includes inter-process communication to allow early exit when a key is found.
  *
  * @note Compile using Open MPI, OpenMP, and OpenSSL libraries:
  * mpic++ -fopenmp -O3 -march=native -o mpi_bruteforce_reoptimized mpi_bruteforce_reoptimized.cpp -lssl -lcrypto
@@ -24,7 +24,6 @@
 #include <algorithm>
 #include <cctype>
 #include <locale>
-#include <immintrin.h>  // For SIMD instructions (Intel intrinsics)
 
 #define DEBUG 0  // Set to 1 to enable debug messages
 
@@ -116,32 +115,6 @@ void longToKey(uint64_t key, unsigned char* keyArray) {
     for (int i = 0; i < 8; ++i) {
         keyArray[7 - i] = (key >> (i * 8)) & 0xFF;
     }
-}
-
-/**
- * @brief Attempts to decrypt the ciphertext with the given key and checks for the search phrase.
- *
- * @param key The 64-bit key to test.
- * @param ciphertext The encrypted data.
- * @param len Length of the ciphertext.
- * @param searchPhrase The phrase to search for in the decrypted text.
- * @return true If the decrypted text contains the search phrase.
- * @return false Otherwise.
- */
-bool tryKey(uint64_t key, const unsigned char* ciphertext, int len, const std::string& searchPhrase) {
-    unsigned char temp[len + 1];
-    unsigned char keyArray[8];
-
-    longToKey(key, keyArray);
-    decrypt(keyArray, ciphertext, temp, len);
-    temp[len] = '\0';  // Null-terminate the decrypted text
-
-    // Check if decryption was successful before searching
-    if (strlen(reinterpret_cast<char*>(temp)) == 0) {
-        return false;
-    }
-
-    return strstr(reinterpret_cast<char*>(temp), searchPhrase.c_str()) != nullptr;
 }
 
 /**
@@ -266,12 +239,15 @@ int main(int argc, char* argv[]) {
     encrypt(keyArray, plaintextBuffer, ciphertext, paddedLength);
 
     // Define key space and range for each process
-    uint64_t upperBound = (1ULL << 24);  // Adjusted for testing purposes (e.g., 2^24)
+    uint64_t upperBound = (1ULL << 56);  // 2^56 keys for DES
     uint64_t keysPerProcess = upperBound / numProcesses;
     uint64_t lowerBound = keysPerProcess * processId;
     uint64_t upperBoundLocal = (processId == numProcesses - 1) ? upperBound : lowerBound + keysPerProcess;
 
     uint64_t foundKey = 0;
+    bool keyFound = false;
+    uint64_t globalFoundKey = 0;
+    bool globalKeyFound = false;
 
     // Start timing
     MPI_Barrier(comm);  // Ensure all processes start at the same time
@@ -282,42 +258,30 @@ int main(int argc, char* argv[]) {
     int numThreads = omp_get_max_threads();
     std::cout << "Number of threads: " << numThreads << std::endl;
 
-    // Brute-force key search with OpenMP and SIMD optimizations
-    volatile bool keyFound = false;
+    // Define chunk size
+    uint64_t chunkSize = 1000000; // Adjust as needed
+    uint64_t currentKey = lowerBound;
 
-    // OpenMP parallel region
+    while (currentKey < upperBoundLocal && !globalKeyFound) {
+        uint64_t chunkEnd = std::min(currentKey + chunkSize, upperBoundLocal);
+
+        // Brute-force key search with OpenMP
 #pragma omp parallel shared(foundKey, keyFound)
-    {
-        // Each thread has its own local variables
-        unsigned char localKeyArray[8];
-        unsigned char localDecrypted[paddedLength + 1];
+        {
+            // Each thread has its own local variables
+            unsigned char localKeyArray[8];
+            unsigned char localDecrypted[paddedLength + 1];
 
-        // SIMD vectorization variables
-        // Assuming AVX2 (256-bit registers), adjust as needed
-        const int simdWidth = 4;  // Number of keys processed in parallel
-        uint64_t simdKeys[simdWidth];
-
-        // Loop over keys assigned to this MPI process
+            // Loop over keys assigned to this chunk
 #pragma omp for schedule(dynamic, 1024)
-        for (uint64_t key = lowerBound; key < upperBoundLocal; key += simdWidth) {
-            // Early exit if key is found
-            if (keyFound) {
-                continue;
-            }
-
-            // Prepare SIMD keys
-            for (int i = 0; i < simdWidth; ++i) {
-                simdKeys[i] = key + i;
-            }
-
-            // SIMD processing (placeholder)
-            for (int i = 0; i < simdWidth; ++i) {
-                if (simdKeys[i] >= upperBoundLocal) {
+            for (uint64_t key = currentKey; key < chunkEnd; ++key) {
+                // Early exit if key is found
+                if (keyFound) {
                     continue;
                 }
 
                 // Convert key to key array
-                longToKey(simdKeys[i], localKeyArray);
+                longToKey(key, localKeyArray);
 
                 // Decrypt the ciphertext
                 decrypt(localKeyArray, ciphertext, localDecrypted, paddedLength);
@@ -329,18 +293,46 @@ int main(int argc, char* argv[]) {
 #pragma omp critical
                     {
                         if (!keyFound) {
-                            foundKey = simdKeys[i];
+                            foundKey = key;
                             keyFound = true;
                         }
                     }
                 }
             }
-        }
-    }  // End of OpenMP parallel region
+        }  // End of OpenMP parallel region
 
-    // Use MPI_Allreduce to find if any process found the key
-    uint64_t globalFoundKey = 0;
-    MPI_Allreduce(&foundKey, &globalFoundKey, 1, MPI_UINT64_T, MPI_MAX, comm);
+        // Check if keyFound
+        if (keyFound) {
+            // Send foundKey to all other processes
+            for (int i = 0; i < numProcesses; ++i) {
+                if (i != processId) {
+                    MPI_Send(&foundKey, 1, MPI_UINT64_T, i, 0, comm);
+                }
+            }
+            globalFoundKey = foundKey;
+            globalKeyFound = true;
+        } else {
+            // Non-blocking probe for messages from other processes
+            int flag = 0;
+            MPI_Status status;
+            while (true) {
+                MPI_Iprobe(MPI_ANY_SOURCE, 0, comm, &flag, &status);
+                if (flag) {
+                    uint64_t receivedKey;
+                    MPI_Recv(&receivedKey, 1, MPI_UINT64_T, status.MPI_SOURCE, 0, comm, MPI_STATUS_IGNORE);
+                    globalFoundKey = receivedKey;
+                    globalKeyFound = true;
+                    keyFound = true;
+                    foundKey = receivedKey;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Update currentKey
+        currentKey = chunkEnd;
+    }
 
     // End timing
     MPI_Barrier(comm);  // Ensure all processes have finished
@@ -350,8 +342,9 @@ int main(int argc, char* argv[]) {
     if (processId == 0) {
         if (globalFoundKey != 0) {
             unsigned char decryptedText[paddedLength + 1];
-            longToKey(globalFoundKey, keyArray);
-            decrypt(keyArray, ciphertext, decryptedText, paddedLength);
+            unsigned char foundKeyArray[8];
+            longToKey(globalFoundKey, foundKeyArray);
+            decrypt(foundKeyArray, ciphertext, decryptedText, paddedLength);
             decryptedText[paddedLength] = '\0';
             std::cout << "Key found: " << globalFoundKey << " Decrypted text: " << decryptedText << std::endl;
         } else {
