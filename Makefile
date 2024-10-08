@@ -15,8 +15,9 @@ SRC_DIR = src
 
 # Source files
 MPI_SRC = $(SRC_DIR)/mpi_bruteforce.cpp
-MPI_OPT_SRC = $(SRC_DIR)/mpi_bruteforce_optimized.cpp
-MPI_REOPT_SRC = $(SRC_DIR)/mpi_bruteforce_reoptimized.cpp
+MPI_V1_SRC = $(SRC_DIR)/mpi_bruteforce_v1.cpp
+MPI_V2_SRC = $(SRC_DIR)/mpi_bruteforce_v2.cpp
+MPI_V3_SRC = $(SRC_DIR)/mpi_bruteforce_v3.cpp
 SEQ_SRC = $(SRC_DIR)/naive_sequential.cpp
 
 # Output binaries
@@ -38,13 +39,18 @@ $(MPI_BIN): $(MPI_SRC)
 	$(MPICXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Compile optimized MPI-based brute-force program
-$(MPI_OPT_BIN): $(MPI_OPT_SRC)
-	@echo "Compiling optimized MPI brute-force program..."
+$(MPI_OPT_BIN): $(MPI_V1_SRC)
+	@echo "Compiling v1 MPI brute-force program..."
 	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Compile reoptimized MPI-based brute-force program
-$(MPI_REOPT_BIN): $(MPI_REOPT_SRC)
-	@echo "Compiling reoptimized MPI brute-force program..."
+$(MPI_REOPT_BIN): $(MPI_V2_SRC)
+	@echo "Compiling v2 MPI brute-force program..."
+	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
+
+# Compile reoptimized MPI-based brute-force program
+$(MPI_REOPT_BIN): $(MPI_V3_SRC)
+	@echo "Compiling v3 MPI brute-force program..."
 	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Compile sequential brute-force program
