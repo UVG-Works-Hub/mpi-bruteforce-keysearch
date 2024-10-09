@@ -357,7 +357,7 @@ int main(int argc, char* argv[]) {
             longToKey(foundKey, keyArray);
             decrypt(keyArray, ciphertext, decryptedText, paddedLength);
             decryptedText[paddedLength] = '\0';
-            std::cout << "Key found: " << foundKey << " Decrypted text: " << decryptedText << std::endl;
+            std::cout << "Key found: " << foundKey << "\nDecrypted text: -" << decryptedText << "-" << std::endl;
         } else {
             std::cout << "Key not found in the specified range." << std::endl;
         }

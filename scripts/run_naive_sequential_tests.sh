@@ -12,7 +12,7 @@ NAIVE_EXEC="bin/naive_sequential"
 
 # Array of keys to test
 # KEYS=("123456" "18014398509481983" "18014398509481984")
-KEYS=("123456") # For testing purposes, only use one key.
+KEYS=("123456" "12345678" "12345422") # For testing purposes, only use one key.
 # The other keys are too large and will take too long to run.
 
 # Run tests for each key

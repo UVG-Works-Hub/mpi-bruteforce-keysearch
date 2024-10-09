@@ -514,7 +514,7 @@ int main(int argc, char* argv[]) {
             decrypt(keyArray, ciphertext.data(), decrypted.data(), paddedLength);
             decrypted.push_back('\0');
 
-            std::cout << "Decrypted text: " << reinterpret_cast<char*>(decrypted.data()) << std::endl;
+            std::cout << "Decrypted text: -" << reinterpret_cast<char*>(decrypted.data()) << "-" << std::endl;
         } else {
             std::cout << "Key not found in the specified range." << std::endl;
         }

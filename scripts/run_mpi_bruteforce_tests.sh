@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create a directory to store the results
-mkdir -p ../test_results/mpi_bruteforce
+mkdir -p ../test_results/mpi_bruteforce_original
 
 # Paths to input files
 INPUT_FILE="../tests/b__part/input.txt"

@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
             longToKey(key, keyArray);
             decrypt(keyArray, ciphertext, decryptedText, paddedLength);
             decryptedText[paddedLength] = '\0';
-            std::cout << "Key found: " << key << " Decrypted text: " << decryptedText << std::endl;
+            std::cout << "Key found: " << key << "\nDecrypted text:-" << decryptedText << "-" << std::endl;
             break;
         }
     }

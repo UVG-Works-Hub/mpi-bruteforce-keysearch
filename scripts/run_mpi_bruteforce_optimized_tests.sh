@@ -37,7 +37,7 @@ for KEY in "${KEYS[@]}"; do
     OUTPUT_FILE="../test_results/mpi_bruteforce_optimized/result_key_${KEY}.txt"
 
     echo "Running optimized MPI brute-force with key $KEY..."
-    
+
     # Execute the optimized MPI program and redirect output to the output file
     mpirun -np "$NUM_PROCESSES" "$MPI_EXEC" "$INPUT_FILE" "$KEY" "$SEARCH_PHRASE_FILE" > "$OUTPUT_FILE"
 
