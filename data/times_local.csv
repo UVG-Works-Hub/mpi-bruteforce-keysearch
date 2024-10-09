@@ -1,0 +1,16 @@
+Program,Key,Plaintext,Search_Phrase,Key_Found,Decrypted_Text,Execution_Time
+mpi_bruteforce_original,123456,"Esta es una prueba de proyecto 2","es una prueba de",57920,"Esta es una prueba de proyecto 2",0.0443219
+mpi_bruteforce_original,60000000,"Esta es una prueba de proyecto 2","es una prueba de",43156992,"Esta es una prueba de proyecto 2",31.65
+mpi_bruteforce_original,120000000,"Esta es una prueba de proyecto 2","es una prueba de",103157248,"Esta es una prueba de proyecto 2",77.2557
+mpi_bruteforce_original,600000000,"Esta es una prueba de proyecto 2","es una prueba de",583157248,"Esta es una prueba de proyecto 2",428.202
+mpi_bruteforce_original,1000000000,"Esta es una prueba de proyecto 2","es una prueba de",983222784,"Esta es una prueba de proyecto 2",699.876
+mpi_bruteforce_v1,123456,"Esta es una prueba de proyecto 2","es una prueba de",57920,"Esta es una prueba de proyecto 2",1.45412
+mpi_bruteforce_v1,60000000,"Esta es una prueba de proyecto 2","es una prueba de",43156992,"Esta es una prueba de proyecto 2",30.0562
+mpi_bruteforce_v1,120000000,"Esta es una prueba de proyecto 2","es una prueba de",103157248,"Esta es una prueba de proyecto 2",70.3974
+mpi_bruteforce_v1,600000000,"Esta es una prueba de proyecto 2","es una prueba de",583157248,"Esta es una prueba de proyecto 2",401.388
+mpi_bruteforce_v1,1000000000,"Esta es una prueba de proyecto 2","es una prueba de",983222784,"Esta es una prueba de proyecto 2",698.34
+naive_sequential,123456,"Esta es una prueba de proyecto 2","es una prueba de",57920,"Decrypted text:Esta es una prueba de proyecto 2",0.0395439
+naive_sequential,60000000,"Esta es una prueba de proyecto 2","es una prueba de",43156992,"Decrypted text:Esta es una prueba de proyecto 2",24.4704
+naive_sequential,120000000,"Esta es una prueba de proyecto 2","es una prueba de",103157248,"Decrypted text:Esta es una prueba de proyecto 2",57.6434
+naive_sequential,600000000,"Esta es una prueba de proyecto 2","es una prueba de",583157248,"Decrypted text:Esta es una prueba de proyecto 2",327.814
+naive_sequential,1000000000,"Esta es una prueba de proyecto 2","es una prueba de",983222784,"Decrypted text:Esta es una prueba de proyecto 2",560.2

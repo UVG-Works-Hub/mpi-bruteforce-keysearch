@@ -1,0 +1,6 @@
+Program,Key,Plaintext,Search_Phrase,Key_Found,Decrypted_Text,Execution_Time
+mpi_bruteforce_v2,123456,"Esta es una prueba de proyecto 2","es una prueba de",57920,"Esta es una prueba de proyecto 2",2.3796
+mpi_bruteforce_v2,60000000,"Esta es una prueba de proyecto 2","es una prueba de",43156992,"Esta es una prueba de proyecto 2",49.9976
+mpi_bruteforce_v2,120000000,"Esta es una prueba de proyecto 2","es una prueba de",103157248,"Esta es una prueba de proyecto 2",116.518
+mpi_bruteforce_v2,600000000,"Esta es una prueba de proyecto 2","es una prueba de",583157248,"Esta es una prueba de proyecto 2",649.118
+mpi_bruteforce_v2,1000000000,"Esta es una prueba de proyecto 2","es una prueba de",983222784,"Esta es una prueba de proyecto 2",1094.27
