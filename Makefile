@@ -14,43 +14,37 @@ BIN_DIR = bin
 SRC_DIR = src
 
 # Source files
-MPI_SRC = $(SRC_DIR)/mpi_bruteforce.cpp
+MPI_ORIGINAL_SRC = $(SRC_DIR)/mpi_bruteforce.cpp
 MPI_V1_SRC = $(SRC_DIR)/mpi_bruteforce_v1.cpp
 MPI_V2_SRC = $(SRC_DIR)/mpi_bruteforce_v2.cpp
-MPI_V3_SRC = $(SRC_DIR)/mpi_bruteforce_v3.cpp
 SEQ_SRC = $(SRC_DIR)/naive_sequential.cpp
 
 # Output binaries
-MPI_BIN = $(BIN_DIR)/mpi_bruteforce
-MPI_OPT_BIN = $(BIN_DIR)/mpi_bruteforce_optimized
-MPI_REOPT_BIN = $(BIN_DIR)/mpi_bruteforce_reoptimized
+MPI_ORIGINAL_BIN = $(BIN_DIR)/mpi_bruteforce_original
+MPI_V1_BIN = $(BIN_DIR)/mpi_bruteforce_v1
+MPI_V2_BIN = $(BIN_DIR)/mpi_bruteforce_v2
 SEQ_BIN = $(BIN_DIR)/naive_sequential
 
 # Default target
-all: directories $(MPI_BIN) $(MPI_OPT_BIN) $(MPI_REOPT_BIN) $(SEQ_BIN)
+all: directories $(MPI_ORIGINAL_BIN) $(MPI_V1_BIN) $(MPI_V2_BIN) $(SEQ_BIN)
 
 # Create necessary directories
 directories:
 	@mkdir -p $(BIN_DIR)
 
 # Compile original MPI-based brute-force program
-$(MPI_BIN): $(MPI_SRC)
+$(MPI_ORIGINAL_BIN): $(MPI_ORIGINAL_SRC)
 	@echo "Compiling original MPI brute-force program..."
 	$(MPICXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
-# Compile optimized MPI-based brute-force program
-$(MPI_OPT_BIN): $(MPI_V1_SRC)
-	@echo "Compiling v1 MPI brute-force program..."
+# Compile MPI-based brute-force program version 1
+$(MPI_V1_BIN): $(MPI_V1_SRC)
+	@echo "Compiling MPI brute-force version 1..."
 	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
 
-# Compile reoptimized MPI-based brute-force program
-$(MPI_REOPT_BIN): $(MPI_V2_SRC)
-	@echo "Compiling v2 MPI brute-force program..."
-	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
-
-# Compile reoptimized MPI-based brute-force program
-$(MPI_REOPT_BIN): $(MPI_V3_SRC)
-	@echo "Compiling v3 MPI brute-force program..."
+# Compile MPI-based brute-force program version 2
+$(MPI_V2_BIN): $(MPI_V2_SRC)
+	@echo "Compiling MPI brute-force version 2..."
 	$(MPICXX) $(OPT_CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 # Compile sequential brute-force program

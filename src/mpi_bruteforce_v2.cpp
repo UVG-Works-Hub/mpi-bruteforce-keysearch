@@ -1,15 +1,15 @@
 /**
- * @file mpi_bruteforce_reoptimized.cpp
+ * @file mpi_bruteforce_v2.cpp
  * @brief MPI and OpenMP program to encrypt and brute-force decrypt a plaintext using OpenSSL's DES.
  *
  * This program uses MPI for distributed memory parallelism and OpenMP for shared memory parallelism.
  * It includes inter-process communication to allow early exit when a key is found.
  *
  * @note Compile using Open MPI, OpenMP, and OpenSSL libraries:
- * mpic++ -fopenmp -O3 -march=native -o mpi_bruteforce_reoptimized mpi_bruteforce_reoptimized.cpp -lssl -lcrypto
+ * mpic++ -fopenmp -O3 -march=native -o mpi_bruteforce_v2 mpi_bruteforce_v2.cpp -lssl -lcrypto
  *
  * Example usage:
- * mpirun -np 4 ./mpi_bruteforce_reoptimized plaintext.txt 123456 search_phrase.txt
+ * mpirun -np 4 ./mpi_bruteforce_v2 plaintext.txt 123456 search_phrase.txt
  *
  * @date October 2024
  */
@@ -254,9 +254,8 @@ int main(int argc, char* argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
 
     std::cout << "Process " << processId << " searching keys " << lowerBound << " to " << upperBoundLocal - 1 << std::endl;
-    // Show threads information
-    int numThreads = omp_get_max_threads();
-    std::cout << "Number of threads: " << numThreads << std::endl;
+    // Set the number of threads to 4 for OpenMP
+    omp_set_num_threads(4);
 
     // Define chunk size
     uint64_t chunkSize = 1000000; // Adjust as needed

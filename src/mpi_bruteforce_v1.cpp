@@ -1,15 +1,15 @@
 /**
- * @file mpi_bruteforce_optimized.cpp
+ * @file mpi_bruteforce_v1.cpp
  * @brief MPI program to encrypt and brute-force decrypt a plaintext using OpenSSL's DES.
  *
  * This optimized version reduces the overhead of checking for a found key on every iteration.
  * Instead, it periodically checks for a found key using MPI non-blocking probes.
  *
  * @note Compile using Open MPI and OpenSSL libraries:
- * mpic++ -o mpi_bruteforce_optimized mpi_bruteforce_optimized.cpp -lssl -lcrypto
+ * mpic++ -o mpi_bruteforce_v1 mpi_bruteforce_v1.cpp -lssl -lcrypto
  *
  * Example usage:
- * mpirun -np 4 ./mpi_bruteforce_optimized plaintext.txt 123456 search_phrase.txt
+ * mpirun -np 4 ./mpi_bruteforce_v1 plaintext.txt 123456 search_phrase.txt
  *
  * @date October 2024
  */
@@ -302,7 +302,7 @@ int main(int argc, char* argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Brute-force key search
-    const int CHECK_INTERVAL = 100;  // Check for messages every 1000 iterations
+    const int CHECK_INTERVAL = 1000000;  // Check for messages every 1000 iterations
     long iteration = 0;
 
     for (long key = lowerBound; key < upperBoundLocal; ++key) {
